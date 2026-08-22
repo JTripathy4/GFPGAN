@@ -21,11 +21,6 @@ SERVER_OUTPUT = f"{GFPGAN}/results_final"
 if not os.path.isdir(GFPGAN):
     raise RuntimeError("❌ Run PY1 first")
 
-
-# ============================================================
-# CREATE FOLDERS
-# ============================================================
-
 os.makedirs(UPLOAD, exist_ok=True)
 os.makedirs(INPUT, exist_ok=True)
 os.makedirs(RESULT, exist_ok=True)
@@ -38,20 +33,15 @@ os.makedirs(RESULT, exist_ok=True)
 try:
     from PIL import Image
     import pillow_heif
-
-    pillow_heif.register_heif_opener()
-
 except ImportError:
-
     subprocess.run(
         ["pip", "install", "-q", "pillow-heif"],
         check=True
     )
-
     from PIL import Image
     import pillow_heif
 
-    pillow_heif.register_heif_opener()
+pillow_heif.register_heif_opener()
 
 
 # ============================================================
@@ -61,41 +51,44 @@ except ImportError:
 photos = []
 
 for ext in [
-    "*.jpg", "*.jpeg",
-    "*.JPG", "*.JPEG",
-    "*.heic", "*.HEIC",
-    "*.heif", "*.HEIF",
+    "*.jpg", "*.jpeg", "*.JPG", "*.JPEG",
+    "*.heic", "*.HEIC", "*.heif", "*.HEIF",
     "*.png", "*.PNG"
 ]:
     photos += glob.glob(f"{UPLOAD}/{ext}")
 
-
 if not photos:
-
-    print("📂 No photos found")
-    print("📁", UPLOAD)
-
+    print("📂 No photos found in:")
+    print(UPLOAD)
     raise SystemExit
-
 
 print(f"📷 {len(photos)} photo(s) found")
 
 
 # ============================================================
-# GET AVAILABLE NAME
+# TEMPORARY FOLDERS
+# ============================================================
+
+shutil.rmtree(SERVER_INPUT, ignore_errors=True)
+shutil.rmtree(SERVER_OUTPUT, ignore_errors=True)
+
+os.makedirs(SERVER_INPUT, exist_ok=True)
+os.makedirs(SERVER_OUTPUT, exist_ok=True)
+
+
+# ============================================================
+# PREPARE INPUT
 # ============================================================
 
 def get_name(filename):
 
     name, ext = os.path.splitext(filename)
 
-    # HEIC → JPG
     if ext.lower() in [".heic", ".heif"]:
         ext = ".jpg"
 
     candidate = name + ext
 
-    # Original name available
     if (
         not os.path.exists(f"{INPUT}/{candidate}")
         and
@@ -103,7 +96,6 @@ def get_name(filename):
     ):
         return candidate
 
-    # Numeric filename
     if name.isdigit():
 
         numbers = []
@@ -119,7 +111,6 @@ def get_name(filename):
 
         return f"{max(numbers, default=0) + 1}{ext}"
 
-    # Normal filename
     number = 1
 
     while True:
@@ -136,54 +127,15 @@ def get_name(filename):
         number += 1
 
 
-# ============================================================
-# TEMPORARY SERVER FOLDERS
-# ============================================================
-
-shutil.rmtree(
-    SERVER_INPUT,
-    ignore_errors=True
-)
-
-shutil.rmtree(
-    SERVER_OUTPUT,
-    ignore_errors=True
-)
-
-os.makedirs(
-    SERVER_INPUT,
-    exist_ok=True
-)
-
-os.makedirs(
-    SERVER_OUTPUT,
-    exist_ok=True
-)
-
-
-# ============================================================
-# PREPARE EACH PHOTO
-# ============================================================
-
 for photo in photos:
 
     original_name = os.path.basename(photo)
+    filename = get_name(original_name)
 
-    final_name = get_name(original_name)
+    if filename != original_name:
+        print(f"🔄 {original_name} → {filename}")
 
-    if final_name != original_name:
-
-        print(
-            f"🔄 {original_name} → {final_name}"
-        )
-
-
-    # --------------------------------------------------------
-    # CREATE INPUT FILE
-    # --------------------------------------------------------
-
-    input_file = f"{INPUT}/{final_name}"
-
+    input_file = f"{INPUT}/{filename}"
 
     # HEIC / HEIF → JPEG
     if original_name.lower().endswith(
@@ -205,19 +157,45 @@ for photo in photos:
             input_file
         )
 
-
-    # --------------------------------------------------------
-    # COPY INPUT → COLAB
-    # --------------------------------------------------------
-
     shutil.copy2(
         input_file,
-        f"{SERVER_INPUT}/{final_name}"
+        f"{SERVER_INPUT}/{filename}"
     )
 
-    print(
-        f"📥 {final_name}"
+    print(f"📥 {filename}")
+
+
+# ============================================================
+# IMPORTANT TORCHVISION COMPATIBILITY FIX
+# ============================================================
+
+print("🔧 Preparing torchvision compatibility...")
+
+compatibility_file = "/content/torchvision_functional_fix.py"
+
+with open(compatibility_file, "w") as f:
+
+    f.write("""
+import sys
+import types
+
+try:
+    from torchvision.transforms.functional import rgb_to_grayscale
+
+    module = types.ModuleType(
+        "torchvision.transforms.functional_tensor"
     )
+
+    module.rgb_to_grayscale = rgb_to_grayscale
+
+    sys.modules[
+        "torchvision.transforms.functional_tensor"
+    ] = module
+
+except Exception as e:
+    print("Torchvision compatibility error:", e)
+    raise
+""")
 
 
 # ============================================================
@@ -226,28 +204,38 @@ for photo in photos:
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-os.chdir(GFPGAN)
-
-print()
 print("🖥️ MODE: CPU")
 print("🔄 Restoring...")
 print("⏳ Please wait...")
 
 
 # ============================================================
-# GFPGAN
+# RUN GFPGAN WITH COMPATIBILITY MODULE PRELOADED
 # ============================================================
+
+os.chdir(GFPGAN)
 
 command = [
     "python",
+    "-c",
+    f"""
+import sys
+sys.path.insert(0, "/content")
+
+exec(open("{compatibility_file}").read())
+
+sys.argv = [
     "inference_gfpgan.py",
-    "-i", SERVER_INPUT,
-    "-o", SERVER_OUTPUT,
+    "-i", "{SERVER_INPUT}",
+    "-o", "{SERVER_OUTPUT}",
     "-v", "1.4",
     "-s", "2",
     "-w", "1.0"
 ]
 
+exec(open("inference_gfpgan.py").read())
+"""
+]
 
 process = subprocess.run(
     command,
@@ -255,7 +243,6 @@ process = subprocess.run(
     stderr=subprocess.STDOUT,
     text=True
 )
-
 
 print(process.stdout)
 
@@ -265,7 +252,6 @@ print(process.stdout)
 # ============================================================
 
 if process.returncode != 0:
-
     raise RuntimeError(
         f"❌ GFPGAN failed. Return code: {process.returncode}"
     )
@@ -279,13 +265,10 @@ restored = glob.glob(
     f"{SERVER_OUTPUT}/restored_imgs/*"
 )
 
-
 if not restored:
-
     raise RuntimeError(
         "❌ No restored images produced"
     )
-
 
 for file in restored:
 
@@ -296,9 +279,7 @@ for file in restored:
         f"{RESULT}/{filename}"
     )
 
-    print(
-        f"✅ {filename}"
-    )
+    print(f"✅ {filename}")
 
 
 # ============================================================
