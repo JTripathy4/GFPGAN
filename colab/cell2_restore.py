@@ -2,7 +2,12 @@ import os
 import shutil
 import glob
 import subprocess
+import time
 from google.colab import files
+
+# ============================================================
+# PATHS
+# ============================================================
 
 GFPGAN_FOLDER = "/content/GFPGAN"
 
@@ -15,64 +20,84 @@ SERVER_OUTPUT = os.path.join(
 )
 
 DRIVE_FOLDER = "/content/drive/MyDrive/GFPGAN"
+DRIVE_INPUT = os.path.join(DRIVE_FOLDER, "input")
+DRIVE_RESULT = os.path.join(DRIVE_FOLDER, "result")
 
-DRIVE_INPUT = os.path.join(
-    DRIVE_FOLDER, "input"
+MODEL_FILE = os.path.join(
+    GFPGAN_FOLDER,
+    "experiments",
+    "pretrained_models",
+    "GFPGANv1.4.pth"
 )
 
-DRIVE_RESULT = os.path.join(
-    DRIVE_FOLDER, "result"
-)
+# ============================================================
+# CHECK PY1 SETUP
+# ============================================================
 
-# Check GFPGAN
 if not os.path.isdir(GFPGAN_FOLDER):
-    raise RuntimeError("❌ GFPGAN not found. Run Cell 1 first.")
+    raise RuntimeError("❌ Run PY1 first.")
 
-# Check Drive
+if not os.path.isfile(MODEL_FILE):
+    raise RuntimeError("❌ V1.4 model missing. Run PY1 first.")
+
 if not os.path.exists("/content/drive/MyDrive"):
     raise RuntimeError("❌ Google Drive is not mounted.")
 
 os.chdir(GFPGAN_FOLDER)
 
-# Drive folders — never delete
+# ============================================================
+# DRIVE — NEVER DELETE
+# ============================================================
+
 os.makedirs(DRIVE_INPUT, exist_ok=True)
 os.makedirs(DRIVE_RESULT, exist_ok=True)
 
-# Server folders — clear only these
+# ============================================================
+# SERVER — CLEAR ONLY TEMPORARY FILES
+# ============================================================
+
 shutil.rmtree(SERVER_INPUT, ignore_errors=True)
 shutil.rmtree(SERVER_OUTPUT, ignore_errors=True)
 
 os.makedirs(SERVER_INPUT, exist_ok=True)
 os.makedirs(SERVER_OUTPUT, exist_ok=True)
 
-# Upload
-print("📤 SELECT PHOTO")
+# ============================================================
+# UPLOAD
+# ============================================================
+
+print("📤 Select photo")
 
 uploaded = files.upload()
 
 if not uploaded:
     raise RuntimeError("❌ No photo selected.")
 
-# Save original
+# ============================================================
+# SAVE INPUT
+# ============================================================
+
 for filename in uploaded:
 
-    server_file = os.path.join(
-        SERVER_INPUT, filename
-    )
+    source = os.path.join("/content", filename)
+    server_file = os.path.join(SERVER_INPUT, filename)
 
-    shutil.move(filename, server_file)
+    shutil.move(source, server_file)
 
     shutil.copy2(
         server_file,
         os.path.join(DRIVE_INPUT, filename)
     )
 
-    print("✅ INPUT SAVED:", filename)
+print("✅ Photo saved to Drive")
 
-# Restore
-print("🔄 RESTORING WITH GFPGAN V1.4...")
+# ============================================================
+# RESTORE
+# ============================================================
 
-process = subprocess.run([
+print("🔄 Restoring...")
+
+command = [
     "python",
     "inference_gfpgan.py",
     "-i", SERVER_INPUT,
@@ -80,9 +105,39 @@ process = subprocess.run([
     "-v", "1.4",
     "-s", "2",
     "-w", "1.0"
-])
+]
 
-# Find result
+start_time = time.time()
+
+process = subprocess.Popen(
+    command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+    bufsize=1
+)
+
+# Live elapsed-time indicator
+while process.poll() is None:
+
+    elapsed = int(time.time() - start_time)
+
+    print(
+        f"\r⏳ Processing: {elapsed}s",
+        end="",
+        flush=True
+    )
+
+    time.sleep(2)
+
+return_code = process.wait()
+
+print()
+
+# ============================================================
+# FIND RESULT
+# ============================================================
+
 restored_files = glob.glob(
     os.path.join(
         SERVER_OUTPUT,
@@ -91,31 +146,32 @@ restored_files = glob.glob(
     )
 )
 
-if process.returncode != 0 or not restored_files:
+# ============================================================
+# SAVE RESULT
+# ============================================================
 
-    print("================================")
-    print("❌ GFPGAN RESTORATION FAILED")
-    print("RETURN CODE:", process.returncode)
-    print("================================")
+if return_code != 0 or not restored_files:
 
-else:
+    raise RuntimeError(
+        "❌ Restoration failed. Check the GFPGAN error above."
+    )
 
-    for restored_file in restored_files:
+for restored_file in restored_files:
 
-        filename = os.path.basename(restored_file)
+    filename = os.path.basename(restored_file)
 
-        shutil.copy2(
-            restored_file,
-            os.path.join(DRIVE_RESULT, filename)
-        )
+    shutil.copy2(
+        restored_file,
+        os.path.join(DRIVE_RESULT, filename)
+    )
 
-        print("✅ RESULT SAVED:", filename)
+# ============================================================
+# DOWNLOAD
+# ============================================================
 
-    print("================================")
-    print("✅ GFPGAN COMPLETED")
-    print("✅ RESULT SAVED TO DRIVE")
-    print("================================")
+print("✅ Restoration completed")
+print("💾 Result saved to Drive")
 
-    files.download(restored_files[0])
+files.download(restored_files[0])
 
-    print("⬇️ DOWNLOAD STARTED")
+print("⬇️ Download started")
