@@ -1,35 +1,15 @@
 import os
 import sys
 import subprocess
+from pathlib import Path
 
-# ============================================================
-# PATHS
-# ============================================================
-
-GFPGAN_FOLDER = "/content/GFPGAN"
-
-MODEL_FOLDER = os.path.join(
-    GFPGAN_FOLDER,
-    "experiments",
-    "pretrained_models"
-)
-
-MODEL_FILE = os.path.join(
-    MODEL_FOLDER,
-    "GFPGANv1.4.pth"
-)
-
-MODEL_URL = (
-    "https://github.com/TencentARC/GFPGAN/releases/"
-    "download/v1.3.0/GFPGANv1.4.pth"
-)
-
+GFPGAN = "/content/GFPGAN"
 
 # ============================================================
 # GFPGAN REPOSITORY
 # ============================================================
 
-if os.path.isdir(GFPGAN_FOLDER):
+if os.path.isdir(GFPGAN):
 
     print("✅ GFPGAN already exists")
 
@@ -38,17 +18,14 @@ else:
     print("⬇️ Cloning GFPGAN...")
 
     subprocess.run([
-        "git",
-        "clone",
-        "-q",
+        "git", "clone", "-q",
         "https://github.com/JTripathy4/GFPGAN.git",
-        GFPGAN_FOLDER
+        GFPGAN
     ], check=True)
 
     print("✅ GFPGAN cloned")
 
-
-os.chdir(GFPGAN_FOLDER)
+os.chdir(GFPGAN)
 
 
 # ============================================================
@@ -83,6 +60,49 @@ except ImportError:
         "✅ BasicSR installed:",
         basicsr.__version__
     )
+
+
+# ============================================================
+# TORCHVISION / BASICSR COMPATIBILITY FIX
+# ============================================================
+
+print("🔧 Checking BasicSR compatibility...")
+
+fixed = False
+
+for base in [
+    "/usr/local/lib/python3.11/site-packages",
+    "/usr/local/lib/python3.11/dist-packages"
+]:
+
+    path = Path(base)
+
+    if not path.exists():
+        continue
+
+    for file in path.rglob("degradations.py"):
+
+        text = file.read_text()
+
+        old = "torchvision.transforms.functional_tensor"
+        new = "torchvision.transforms.functional"
+
+        if old in text:
+
+            file.write_text(
+                text.replace(old, new)
+            )
+
+            fixed = True
+
+            print(
+                "✅ BasicSR torchvision compatibility fixed"
+            )
+
+
+if not fixed:
+
+    print("✅ BasicSR compatibility already correct")
 
 
 # ============================================================
@@ -138,15 +158,31 @@ except ImportError:
 
 
 # ============================================================
-# GFPGAN V1.4 MODEL
+# V1.4 MODEL
 # ============================================================
 
+MODEL_DIR = os.path.join(
+    GFPGAN,
+    "experiments",
+    "pretrained_models"
+)
+
+MODEL = os.path.join(
+    MODEL_DIR,
+    "GFPGANv1.4.pth"
+)
+
+MODEL_URL = (
+    "https://github.com/TencentARC/GFPGAN/releases/"
+    "download/v1.3.0/GFPGANv1.4.pth"
+)
+
 os.makedirs(
-    MODEL_FOLDER,
+    MODEL_DIR,
     exist_ok=True
 )
 
-if os.path.isfile(MODEL_FILE):
+if os.path.isfile(MODEL):
 
     print("✅ GFPGAN V1.4 MODEL already exists")
 
@@ -160,28 +196,21 @@ else:
         "--show-progress",
         MODEL_URL,
         "-O",
-        MODEL_FILE
+        MODEL
     ], check=True)
 
     print("✅ GFPGAN V1.4 MODEL downloaded")
 
 
 # ============================================================
-# FINAL VERIFICATION
+# FINAL
 # ============================================================
-
-if not os.path.isfile(MODEL_FILE):
-
-    raise RuntimeError(
-        "❌ GFPGAN V1.4 model is missing"
-    )
-
 
 print()
 print("========================================")
 print("✅ CELL 1 COMPLETED")
 print("========================================")
-print("📁 GFPGAN :", GFPGAN_FOLDER)
+print("📁 GFPGAN :", GFPGAN)
 print("✅ BasicSR :", basicsr.__version__)
 print("✅ V1.4 MODEL : READY")
 print("========================================")
