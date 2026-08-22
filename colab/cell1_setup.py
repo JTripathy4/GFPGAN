@@ -5,94 +5,56 @@ import subprocess
 GFPGAN_FOLDER = "/content/GFPGAN"
 GFPGAN_REPO = "https://github.com/JTripathy4/GFPGAN.git"
 
-# =========================
-# GFPGAN REPOSITORY
-# =========================
-
+# GFPGAN
 if os.path.isdir(GFPGAN_FOLDER):
     print("✅ GFPGAN already exists")
 else:
     print("⬇️ Cloning GFPGAN...")
-
     subprocess.run([
         "git", "clone", "-q",
         GFPGAN_REPO,
         GFPGAN_FOLDER
     ], check=True)
-
     print("✅ GFPGAN cloned")
 
 os.chdir(GFPGAN_FOLDER)
 
-
-# =========================
-# BASICSR
-# =========================
-
+# BasicSR
 try:
     import basicsr
     print("✅ BasicSR already installed:", basicsr.__version__)
-
 except ImportError:
-
     print("⬇️ Installing BasicSR...")
-
     subprocess.run([
         sys.executable, "-m", "pip", "install", "-q",
         "basicsr-fixed==1.4.2"
     ], check=True)
-
     import basicsr
     print("✅ BasicSR installed:", basicsr.__version__)
 
-
-# =========================
-# FACEXLIB
-# =========================
-
+# facexlib
 try:
     import facexlib
-    print("✅ facexlib already installed")
-
+    print("✅ facexlib ready")
 except ImportError:
-
     print("⬇️ Installing facexlib...")
-
     subprocess.run([
         sys.executable, "-m", "pip", "install", "-q",
         "facexlib"
     ], check=True)
 
-
-# =========================
-# REALESRGAN
-# =========================
-
+# realesrgan
 try:
     import realesrgan
-    print("✅ Real-ESRGAN already installed")
-
+    print("✅ realesrgan ready")
 except ImportError:
-
-    print("⬇️ Installing Real-ESRGAN...")
-
+    print("⬇️ Installing realesrgan...")
     subprocess.run([
         sys.executable, "-m", "pip", "install", "-q",
         "realesrgan"
     ], check=True)
 
-
-# =========================
-# FINAL CHECK
-# =========================
-
-import basicsr
-import facexlib
-import realesrgan
-
 print("================================")
 print("✅ CELL 1 COMPLETED")
-print("================================")
 print("📁 GFPGAN:", GFPGAN_FOLDER)
-print("✅ BasicSR:", basicsr.__version__)
 print("================================")
