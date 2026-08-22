@@ -3,33 +3,36 @@ import sys
 import subprocess
 import pathlib
 
-GF = "/content/GFPGAN"
+GFPGAN_FOLDER = "/content/GFPGAN"
 
 # =========================
-# GFPGAN
+# GFPGAN REPOSITORY
 # =========================
-if os.path.isdir(GF):
+
+if os.path.isdir(GFPGAN_FOLDER):
     print("✅ GFPGAN already exists")
 else:
     print("⬇️ Cloning GFPGAN...")
     subprocess.run([
         "git", "clone", "-q",
         "https://github.com/JTripathy4/GFPGAN.git",
-        GF
+        GFPGAN_FOLDER
     ], check=True)
+    print("✅ GFPGAN cloned")
 
-os.chdir(GF)
+os.chdir(GFPGAN_FOLDER)
+
 
 # =========================
 # BASICSR
 # =========================
+
 try:
     import basicsr
     print("✅ BasicSR already installed:", basicsr.__version__)
 
 except ImportError:
-
-    print("⬇️ Installing BasicSR fixed version...")
+    print("⬇️ Installing BasicSR...")
 
     subprocess.run([
         sys.executable, "-m", "pip", "install", "-q",
@@ -39,63 +42,71 @@ except ImportError:
     import basicsr
     print("✅ BasicSR installed:", basicsr.__version__)
 
-# =========================
-# OTHER DEPENDENCIES
-# =========================
-for package in ["facexlib", "realesrgan"]:
 
-    try:
-        __import__(package)
-        print("✅", package, "ready")
+# =========================
+# FACEXLIB
+# =========================
 
-    except ImportError:
-        subprocess.run([
-            sys.executable, "-m", "pip",
-            "install", "-q", package
-        ], check=True)
+try:
+    import facexlib
+    print("✅ facexlib already installed")
+
+except ImportError:
+    print("⬇️ Installing facexlib...")
+
+    subprocess.run([
+        sys.executable, "-m", "pip", "install", "-q",
+        "facexlib"
+    ], check=True)
+
+
+# =========================
+# REALESRGAN
+# =========================
+
+try:
+    import realesrgan
+    print("✅ Real-ESRGAN already installed")
+
+except ImportError:
+    print("⬇️ Installing Real-ESRGAN...")
+
+    subprocess.run([
+        sys.executable, "-m", "pip", "install", "-q",
+        "realesrgan"
+    ], check=True)
+
 
 # =========================
 # BASICSR / TORCHVISION FIX
 # =========================
-for p in pathlib.Path("/usr/local/lib").rglob("degradations.py"):
 
-    text = p.read_text()
+for file_path in pathlib.Path("/usr/local/lib").rglob(
+    "degradations.py"
+):
 
-    text = text.replace(
-        "torchvision.transforms.functional_tensor",
-        "torchvision.transforms.functional"
-    )
+    text = file_path.read_text()
 
-    p.write_text(text)
+    old = "torchvision.transforms.functional_tensor"
+    new = "torchvision.transforms.functional"
 
-# =========================
-# GOOGLE DRIVE
-# =========================
-from google.colab import drive
+    if old in text:
+        file_path.write_text(text.replace(old, new))
+        print("✅ BasicSR compatibility fixed")
 
-DRIVE = "/content/drive"
-
-if os.path.ismount(DRIVE):
-
-    print("✅ Google Drive already mounted")
-
-else:
-
-    if os.path.exists(DRIVE) and os.listdir(DRIVE):
-
-        DRIVE = "/content/gdrive_new"
-        os.makedirs(DRIVE, exist_ok=True)
-
-    drive.mount(DRIVE)
 
 # =========================
 # FINAL CHECK
 # =========================
-import basicsr
 
+import basicsr
+import facexlib
+import realesrgan
+
+print()
 print("================================")
-print("✅ CELL 1 COMPLETED")
-print("✅ BasicSR:", basicsr.__version__)
-print("📁 GFPGAN:", GF)
-print("📁 DRIVE:", DRIVE)
+print("✅ SOFTWARE SETUP COMPLETED")
+print("================================")
+print("📁 GFPGAN :", GFPGAN_FOLDER)
+print("✅ BasicSR :", basicsr.__version__)
 print("================================")
