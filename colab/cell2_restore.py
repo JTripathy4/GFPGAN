@@ -13,85 +13,187 @@ RESULT = f"{DRIVE}/result"
 SERVER_INPUT = f"{GFPGAN}/inputs/upload"
 SERVER_OUTPUT = f"{GFPGAN}/results_final"
 
-# ------------------------------------------------------------
+
+# ============================================================
 # CHECK
-# ------------------------------------------------------------
+# ============================================================
 
 if not os.path.isdir(GFPGAN):
     raise RuntimeError("❌ Run PY1 first")
 
-# ------------------------------------------------------------
-# FOLDERS
-# ------------------------------------------------------------
+
+# ============================================================
+# CREATE FOLDERS
+# ============================================================
 
 os.makedirs(UPLOAD, exist_ok=True)
 os.makedirs(INPUT, exist_ok=True)
 os.makedirs(RESULT, exist_ok=True)
 
-# ------------------------------------------------------------
+
+# ============================================================
 # HEIC SUPPORT
-# ------------------------------------------------------------
+# ============================================================
 
 try:
     from PIL import Image
     import pillow_heif
+
+    pillow_heif.register_heif_opener()
+
 except ImportError:
+
     subprocess.run(
         ["pip", "install", "-q", "pillow-heif"],
         check=True
     )
+
     from PIL import Image
     import pillow_heif
 
-pillow_heif.register_heif_opener()
+    pillow_heif.register_heif_opener()
 
-# ------------------------------------------------------------
+
+# ============================================================
 # FIND PHOTOS
-# ------------------------------------------------------------
+# ============================================================
 
 photos = []
 
 for ext in [
-    "*.jpg", "*.jpeg", "*.JPG", "*.JPEG",
-    "*.heic", "*.HEIC", "*.heif", "*.HEIF",
+    "*.jpg", "*.jpeg",
+    "*.JPG", "*.JPEG",
+    "*.heic", "*.HEIC",
+    "*.heif", "*.HEIF",
     "*.png", "*.PNG"
 ]:
     photos += glob.glob(f"{UPLOAD}/{ext}")
 
+
 if not photos:
-    print("📂 No photos found in upload")
-    print(UPLOAD)
+
+    print("📂 No photos found")
+    print("📁", UPLOAD)
+
     raise SystemExit
+
 
 print(f"📷 {len(photos)} photo(s) found")
 
-# ------------------------------------------------------------
-# TEMPORARY FOLDERS
-# ------------------------------------------------------------
 
-shutil.rmtree(SERVER_INPUT, ignore_errors=True)
-shutil.rmtree(SERVER_OUTPUT, ignore_errors=True)
+# ============================================================
+# GET AVAILABLE NAME
+# ============================================================
 
-os.makedirs(SERVER_INPUT, exist_ok=True)
-os.makedirs(SERVER_OUTPUT, exist_ok=True)
+def get_name(filename):
 
-# ------------------------------------------------------------
-# PREPARE INPUT
-# ------------------------------------------------------------
+    name, ext = os.path.splitext(filename)
+
+    # HEIC → JPG
+    if ext.lower() in [".heic", ".heif"]:
+        ext = ".jpg"
+
+    candidate = name + ext
+
+    # Original name available
+    if (
+        not os.path.exists(f"{INPUT}/{candidate}")
+        and
+        not os.path.exists(f"{RESULT}/{candidate}")
+    ):
+        return candidate
+
+    # Numeric filename
+    if name.isdigit():
+
+        numbers = []
+
+        for folder in [INPUT, RESULT]:
+
+            for f in os.listdir(folder):
+
+                n, e = os.path.splitext(f)
+
+                if n.isdigit():
+                    numbers.append(int(n))
+
+        return f"{max(numbers, default=0) + 1}{ext}"
+
+    # Normal filename
+    number = 1
+
+    while True:
+
+        candidate = f"{name}_{number}{ext}"
+
+        if (
+            not os.path.exists(f"{INPUT}/{candidate}")
+            and
+            not os.path.exists(f"{RESULT}/{candidate}")
+        ):
+            return candidate
+
+        number += 1
+
+
+# ============================================================
+# TEMPORARY SERVER FOLDERS
+# ============================================================
+
+shutil.rmtree(
+    SERVER_INPUT,
+    ignore_errors=True
+)
+
+shutil.rmtree(
+    SERVER_OUTPUT,
+    ignore_errors=True
+)
+
+os.makedirs(
+    SERVER_INPUT,
+    exist_ok=True
+)
+
+os.makedirs(
+    SERVER_OUTPUT,
+    exist_ok=True
+)
+
+
+# ============================================================
+# PREPARE EACH PHOTO
+# ============================================================
 
 for photo in photos:
 
-    filename = os.path.basename(photo)
-    name, ext = os.path.splitext(filename)
+    original_name = os.path.basename(photo)
+
+    final_name = get_name(original_name)
+
+    if final_name != original_name:
+
+        print(
+            f"🔄 {original_name} → {final_name}"
+        )
+
+
+    # --------------------------------------------------------
+    # CREATE INPUT FILE
+    # --------------------------------------------------------
+
+    input_file = f"{INPUT}/{final_name}"
+
 
     # HEIC / HEIF → JPEG
-    if ext.lower() in [".heic", ".heif"]:
-
-        filename = name + ".jpg"
+    if original_name.lower().endswith(
+        (".heic", ".heif")
+    ):
 
         image = Image.open(photo)
+
         image.convert("RGB").save(
-            f"{INPUT}/{filename}",
+            input_file,
             "JPEG",
             quality=100
         )
@@ -100,75 +202,41 @@ for photo in photos:
 
         shutil.copy2(
             photo,
-            f"{INPUT}/{filename}"
+            input_file
         )
 
-    # Duplicate protection
-    if os.path.exists(f"{RESULT}/{filename}"):
 
-        base, extension = os.path.splitext(filename)
+    # --------------------------------------------------------
+    # COPY INPUT → COLAB
+    # --------------------------------------------------------
 
-        if base.isdigit():
-
-            used = []
-
-            for folder in [INPUT, RESULT]:
-
-                for f in os.listdir(folder):
-
-                    n, e = os.path.splitext(f)
-
-                    if n.isdigit():
-                        used.append(int(n))
-
-            filename = (
-                f"{max(used, default=0) + 1}"
-                f"{extension}"
-            )
-
-        else:
-
-            n = 1
-            new_name = filename
-
-            while (
-                os.path.exists(f"{INPUT}/{new_name}")
-                or
-                os.path.exists(f"{RESULT}/{new_name}")
-            ):
-
-                new_name = (
-                    f"{base}_{n}{extension}"
-                )
-
-                n += 1
-
-            filename = new_name
-
-    # Copy to Colab
     shutil.copy2(
-        f"{INPUT}/{filename}",
-        f"{SERVER_INPUT}/{filename}"
+        input_file,
+        f"{SERVER_INPUT}/{final_name}"
     )
 
-    print(f"📥 {filename}")
+    print(
+        f"📥 {final_name}"
+    )
 
-# ------------------------------------------------------------
+
+# ============================================================
 # FORCE CPU
-# ------------------------------------------------------------
+# ============================================================
 
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+os.chdir(GFPGAN)
 
 print()
 print("🖥️ MODE: CPU")
 print("🔄 Restoring...")
-print("⏳ This will be slower than GPU, please wait...")
+print("⏳ Please wait...")
 
-# ------------------------------------------------------------
-# RUN GFPGAN
-# ------------------------------------------------------------
 
-os.chdir(GFPGAN)
+# ============================================================
+# GFPGAN
+# ============================================================
 
 command = [
     "python",
@@ -180,6 +248,7 @@ command = [
     "-w", "1.0"
 ]
 
+
 process = subprocess.run(
     command,
     stdout=subprocess.PIPE,
@@ -187,29 +256,36 @@ process = subprocess.run(
     text=True
 )
 
+
 print(process.stdout)
 
-# ------------------------------------------------------------
+
+# ============================================================
 # CHECK
-# ------------------------------------------------------------
+# ============================================================
 
 if process.returncode != 0:
+
     raise RuntimeError(
         f"❌ GFPGAN failed. Return code: {process.returncode}"
     )
 
-# ------------------------------------------------------------
+
+# ============================================================
 # SAVE RESULTS
-# ------------------------------------------------------------
+# ============================================================
 
 restored = glob.glob(
     f"{SERVER_OUTPUT}/restored_imgs/*"
 )
 
+
 if not restored:
+
     raise RuntimeError(
         "❌ No restored images produced"
     )
+
 
 for file in restored:
 
@@ -220,16 +296,20 @@ for file in restored:
         f"{RESULT}/{filename}"
     )
 
-    print(f"✅ {filename}")
+    print(
+        f"✅ {filename}"
+    )
 
-# ------------------------------------------------------------
+
+# ============================================================
 # DONE
-# ------------------------------------------------------------
+# ============================================================
 
 print()
 print("================================")
-print("✅ DONE")
-print("🖥️ CPU RESTORATION COMPLETED")
-print("📂 INPUT :", INPUT)
-print("📂 RESULT:", RESULT)
+print("✅ ALL PHOTOS COMPLETED")
+print("================================")
+print("📂 Upload :", UPLOAD)
+print("📂 Input  :", INPUT)
+print("📂 Result :", RESULT)
 print("================================")
