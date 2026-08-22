@@ -14,7 +14,7 @@ SERVER_INPUT = f"{GFPGAN}/inputs/upload"
 SERVER_OUTPUT = f"{GFPGAN}/results_final"
 
 # ------------------------------------------------------------
-# CHECK PY1
+# CHECK
 # ------------------------------------------------------------
 
 if not os.path.isdir(GFPGAN):
@@ -59,13 +59,14 @@ for ext in [
     photos += glob.glob(f"{UPLOAD}/{ext}")
 
 if not photos:
-    print("📂 No photos found in upload folder")
+    print("📂 No photos found in upload")
+    print(UPLOAD)
     raise SystemExit
 
 print(f"📷 {len(photos)} photo(s) found")
 
 # ------------------------------------------------------------
-# TEMPORARY COLAB FOLDERS
+# TEMPORARY FOLDERS
 # ------------------------------------------------------------
 
 shutil.rmtree(SERVER_INPUT, ignore_errors=True)
@@ -75,18 +76,17 @@ os.makedirs(SERVER_INPUT, exist_ok=True)
 os.makedirs(SERVER_OUTPUT, exist_ok=True)
 
 # ------------------------------------------------------------
-# UPLOAD → INPUT
+# PREPARE INPUT
 # ------------------------------------------------------------
-
-jobs = []
 
 for photo in photos:
 
     filename = os.path.basename(photo)
     name, ext = os.path.splitext(filename)
 
-    # HEIC/HEIF becomes JPEG
+    # HEIC / HEIF → JPEG
     if ext.lower() in [".heic", ".heif"]:
+
         filename = name + ".jpg"
 
         image = Image.open(photo)
@@ -97,19 +97,18 @@ for photo in photos:
         )
 
     else:
-        # Keep original JPEG/PNG
+
         shutil.copy2(
             photo,
             f"{INPUT}/{filename}"
         )
 
-    # --------------------------------------------------------
-    # DUPLICATE NAME
-    # --------------------------------------------------------
-
+    # Duplicate protection
     if os.path.exists(f"{RESULT}/{filename}"):
 
-        if name.isdigit():
+        base, extension = os.path.splitext(filename)
+
+        if base.isdigit():
 
             used = []
 
@@ -122,38 +121,54 @@ for photo in photos:
                     if n.isdigit():
                         used.append(int(n))
 
-            filename = f"{max(used, default=0) + 1}{os.path.splitext(filename)[1]}"
+            filename = (
+                f"{max(used, default=0) + 1}"
+                f"{extension}"
+            )
 
         else:
 
             n = 1
-            base, extension = os.path.splitext(filename)
+            new_name = filename
 
             while (
-                os.path.exists(f"{INPUT}/{filename}") or
-                os.path.exists(f"{RESULT}/{filename}")
+                os.path.exists(f"{INPUT}/{new_name}")
+                or
+                os.path.exists(f"{RESULT}/{new_name}")
             ):
-                filename = f"{base}_{n}{extension}"
+
+                new_name = (
+                    f"{base}_{n}{extension}"
+                )
+
                 n += 1
 
-    # Copy final input to server
+            filename = new_name
+
+    # Copy to Colab
     shutil.copy2(
         f"{INPUT}/{filename}",
         f"{SERVER_INPUT}/{filename}"
     )
 
-    jobs.append(filename)
-
     print(f"📥 {filename}")
 
 # ------------------------------------------------------------
-# RESTORE
+# FORCE CPU
+# ------------------------------------------------------------
+
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+print()
+print("🖥️ MODE: CPU")
+print("🔄 Restoring...")
+print("⏳ This will be slower than GPU, please wait...")
+
+# ------------------------------------------------------------
+# RUN GFPGAN
 # ------------------------------------------------------------
 
 os.chdir(GFPGAN)
-
-print("🔄 Restoring...")
-print("⏳ Please wait...")
 
 command = [
     "python",
@@ -165,10 +180,23 @@ command = [
     "-w", "1.0"
 ]
 
-process = subprocess.run(command)
+process = subprocess.run(
+    command,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True
+)
+
+print(process.stdout)
+
+# ------------------------------------------------------------
+# CHECK
+# ------------------------------------------------------------
 
 if process.returncode != 0:
-    raise RuntimeError("❌ GFPGAN restoration failed")
+    raise RuntimeError(
+        f"❌ GFPGAN failed. Return code: {process.returncode}"
+    )
 
 # ------------------------------------------------------------
 # SAVE RESULTS
@@ -179,7 +207,9 @@ restored = glob.glob(
 )
 
 if not restored:
-    raise RuntimeError("❌ No restored images produced")
+    raise RuntimeError(
+        "❌ No restored images produced"
+    )
 
 for file in restored:
 
@@ -199,6 +229,7 @@ for file in restored:
 print()
 print("================================")
 print("✅ DONE")
+print("🖥️ CPU RESTORATION COMPLETED")
 print("📂 INPUT :", INPUT)
 print("📂 RESULT:", RESULT)
 print("================================")
