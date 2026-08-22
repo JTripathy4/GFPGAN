@@ -2,24 +2,53 @@ import os
 import sys
 import subprocess
 
-GFPGAN = "/content/GFPGAN"
+# ============================================================
+# DRIVE PATHS
+# ============================================================
+
+DRIVE = "/content/drive/MyDrive/GFPGAN"
+
+SOFTWARE = f"{DRIVE}/software"
+GFPGAN = f"{SOFTWARE}/GFPGAN"
+MODEL_DIR = f"{DRIVE}/models"
+
+MODEL = f"{MODEL_DIR}/GFPGANv1.4.pth"
 
 # ============================================================
-# GFPGAN
+# CHECK DRIVE
+# ============================================================
+
+if not os.path.exists("/content/drive/MyDrive"):
+    raise RuntimeError("❌ Google Drive is not mounted.")
+
+os.makedirs(DRIVE, exist_ok=True)
+os.makedirs(SOFTWARE, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+print("✅ Google Drive ready")
+
+
+# ============================================================
+# GFPGAN REPOSITORY
 # ============================================================
 
 if os.path.isdir(GFPGAN):
-    print("✅ GFPGAN already exists")
+
+    print("✅ GFPGAN already exists in Drive")
+
 else:
-    print("⬇️ Cloning GFPGAN...")
+
+    print("⬇️ Cloning GFPGAN to Drive...")
+
     subprocess.run([
-        "git", "clone", "-q",
+        "git",
+        "clone",
+        "-q",
         "https://github.com/JTripathy4/GFPGAN.git",
         GFPGAN
     ], check=True)
-    print("✅ GFPGAN cloned")
 
-os.chdir(GFPGAN)
+    print("✅ GFPGAN cloned to Drive")
 
 
 # ============================================================
@@ -27,26 +56,38 @@ os.chdir(GFPGAN)
 # ============================================================
 
 try:
+
     import basicsr
-    print("✅ BasicSR already installed:", basicsr.__version__)
+
+    print(
+        "✅ BasicSR already available:",
+        basicsr.__version__
+    )
 
 except ImportError:
+
     print("⬇️ Installing BasicSR...")
 
     subprocess.run([
-        sys.executable, "-m", "pip", "install", "-q",
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
         "basicsr-fixed==1.4.2"
     ], check=True)
 
     import basicsr
-    print("✅ BasicSR installed:", basicsr.__version__)
+
+    print(
+        "✅ BasicSR installed:",
+        basicsr.__version__
+    )
 
 
 # ============================================================
-# FIX BASICSR / TORCHVISION
+# BASICSR / TORCHVISION FIX
 # ============================================================
-
-print("🔧 Checking BasicSR compatibility...")
 
 basicsr_path = os.path.dirname(basicsr.__file__)
 
@@ -56,29 +97,33 @@ degradation_file = os.path.join(
     "degradations.py"
 )
 
-if not os.path.isfile(degradation_file):
-    raise RuntimeError(
-        "❌ BasicSR degradations.py not found"
+if os.path.isfile(degradation_file):
+
+    with open(degradation_file, "r") as f:
+        text = f.read()
+
+    old = (
+        "from torchvision.transforms.functional_tensor "
+        "import rgb_to_grayscale"
     )
 
-with open(degradation_file, "r") as f:
-    text = f.read()
+    new = (
+        "from torchvision.transforms.functional "
+        "import rgb_to_grayscale"
+    )
 
-old = "from torchvision.transforms.functional_tensor import rgb_to_grayscale"
-new = "from torchvision.transforms.functional import rgb_to_grayscale"
+    if old in text:
 
-if old in text:
+        text = text.replace(old, new)
 
-    text = text.replace(old, new)
+        with open(degradation_file, "w") as f:
+            f.write(text)
 
-    with open(degradation_file, "w") as f:
-        f.write(text)
+        print("✅ BasicSR compatibility fixed")
 
-    print("✅ BasicSR torchvision fix applied")
+    else:
 
-else:
-
-    print("✅ BasicSR torchvision fix already applied")
+        print("✅ BasicSR compatibility already fixed")
 
 
 # ============================================================
@@ -86,15 +131,22 @@ else:
 # ============================================================
 
 try:
+
     import facexlib
-    print("✅ facexlib already installed")
+
+    print("✅ facexlib already available")
 
 except ImportError:
+
     print("⬇️ Installing facexlib...")
 
     subprocess.run([
-        sys.executable, "-m", "pip",
-        "install", "-q", "facexlib"
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "facexlib"
     ], check=True)
 
     print("✅ facexlib installed")
@@ -105,57 +157,70 @@ except ImportError:
 # ============================================================
 
 try:
+
     import realesrgan
-    print("✅ realesrgan already installed")
+
+    print("✅ realesrgan already available")
 
 except ImportError:
+
     print("⬇️ Installing realesrgan...")
 
     subprocess.run([
-        sys.executable, "-m", "pip",
-        "install", "-q", "realesrgan"
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "-q",
+        "realesrgan"
     ], check=True)
 
     print("✅ realesrgan installed")
 
 
 # ============================================================
-# V1.4 MODEL
+# GFPGAN V1.4 MODEL
 # ============================================================
-
-MODEL_DIR = os.path.join(
-    GFPGAN,
-    "experiments",
-    "pretrained_models"
-)
-
-MODEL = os.path.join(
-    MODEL_DIR,
-    "GFPGANv1.4.pth"
-)
 
 MODEL_URL = (
     "https://github.com/TencentARC/GFPGAN/releases/"
     "download/v1.3.0/GFPGANv1.4.pth"
 )
 
-os.makedirs(MODEL_DIR, exist_ok=True)
-
 if os.path.isfile(MODEL):
 
-    print("✅ GFPGAN V1.4 MODEL already exists")
+    print("✅ GFPGAN V1.4 model already exists in Drive")
 
 else:
 
-    print("⬇️ Downloading GFPGAN V1.4 MODEL...")
+    print("⬇️ Downloading GFPGAN V1.4 model...")
 
     subprocess.run([
-        "wget", "-q", "--show-progress",
+        "wget",
+        "-q",
+        "--show-progress",
         MODEL_URL,
-        "-O", MODEL
+        "-O",
+        MODEL
     ], check=True)
 
-    print("✅ GFPGAN V1.4 MODEL downloaded")
+    print("✅ GFPGAN V1.4 model saved to Drive")
+
+
+# ============================================================
+# DRIVE FOLDERS FOR PHOTOS
+# ============================================================
+
+for folder in [
+    "upload",
+    "input",
+    "result"
+]:
+
+    os.makedirs(
+        f"{DRIVE}/{folder}",
+        exist_ok=True
+    )
 
 
 # ============================================================
@@ -164,9 +229,9 @@ else:
 
 print()
 print("========================================")
-print("✅ CELL 1 COMPLETED")
-print("================================")
+print("✅ PERSISTENT GFPGAN SETUP COMPLETED")
+print("========================================")
 print("📁 GFPGAN :", GFPGAN)
-print("✅ BasicSR :", basicsr.__version__)
-print("✅ V1.4 MODEL : READY")
+print("📁 MODEL  :", MODEL)
+print("📁 DRIVE  :", DRIVE)
 print("========================================")
