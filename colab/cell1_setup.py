@@ -1,9 +1,9 @@
 import os
 import sys
 import subprocess
-import pathlib
 
 GFPGAN_FOLDER = "/content/GFPGAN"
+GFPGAN_REPO = "https://github.com/JTripathy4/GFPGAN.git"
 
 # =========================
 # GFPGAN REPOSITORY
@@ -13,11 +13,13 @@ if os.path.isdir(GFPGAN_FOLDER):
     print("✅ GFPGAN already exists")
 else:
     print("⬇️ Cloning GFPGAN...")
+
     subprocess.run([
         "git", "clone", "-q",
-        "https://github.com/JTripathy4/GFPGAN.git",
+        GFPGAN_REPO,
         GFPGAN_FOLDER
     ], check=True)
+
     print("✅ GFPGAN cloned")
 
 os.chdir(GFPGAN_FOLDER)
@@ -32,6 +34,7 @@ try:
     print("✅ BasicSR already installed:", basicsr.__version__)
 
 except ImportError:
+
     print("⬇️ Installing BasicSR...")
 
     subprocess.run([
@@ -52,6 +55,7 @@ try:
     print("✅ facexlib already installed")
 
 except ImportError:
+
     print("⬇️ Installing facexlib...")
 
     subprocess.run([
@@ -69,30 +73,13 @@ try:
     print("✅ Real-ESRGAN already installed")
 
 except ImportError:
+
     print("⬇️ Installing Real-ESRGAN...")
 
     subprocess.run([
         sys.executable, "-m", "pip", "install", "-q",
         "realesrgan"
     ], check=True)
-
-
-# =========================
-# BASICSR / TORCHVISION FIX
-# =========================
-
-for file_path in pathlib.Path("/usr/local/lib").rglob(
-    "degradations.py"
-):
-
-    text = file_path.read_text()
-
-    old = "torchvision.transforms.functional_tensor"
-    new = "torchvision.transforms.functional"
-
-    if old in text:
-        file_path.write_text(text.replace(old, new))
-        print("✅ BasicSR compatibility fixed")
 
 
 # =========================
@@ -103,10 +90,9 @@ import basicsr
 import facexlib
 import realesrgan
 
-print()
 print("================================")
-print("✅ SOFTWARE SETUP COMPLETED")
+print("✅ CELL 1 COMPLETED")
 print("================================")
-print("📁 GFPGAN :", GFPGAN_FOLDER)
-print("✅ BasicSR :", basicsr.__version__)
+print("📁 GFPGAN:", GFPGAN_FOLDER)
+print("✅ BasicSR:", basicsr.__version__)
 print("================================")
