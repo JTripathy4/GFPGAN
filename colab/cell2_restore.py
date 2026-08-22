@@ -2,59 +2,71 @@ import os
 import shutil
 import glob
 import subprocess
-import time
-from google.colab import files
 
-# ============================================================
-# PATHS
-# ============================================================
+GFPGAN = "/content/GFPGAN"
+DRIVE = "/content/drive/MyDrive/GFPGAN"
 
-GFPGAN_FOLDER = "/content/GFPGAN"
+UPLOAD = f"{DRIVE}/upload"
+INPUT = f"{DRIVE}/input"
+RESULT = f"{DRIVE}/result"
 
-SERVER_INPUT = os.path.join(
-    GFPGAN_FOLDER, "inputs", "upload"
-)
+SERVER_INPUT = f"{GFPGAN}/inputs/upload"
+SERVER_OUTPUT = f"{GFPGAN}/results_final"
 
-SERVER_OUTPUT = os.path.join(
-    GFPGAN_FOLDER, "results_final"
-)
+# ------------------------------------------------------------
+# CHECK PY1
+# ------------------------------------------------------------
 
-DRIVE_FOLDER = "/content/drive/MyDrive/GFPGAN"
-DRIVE_INPUT = os.path.join(DRIVE_FOLDER, "input")
-DRIVE_RESULT = os.path.join(DRIVE_FOLDER, "result")
+if not os.path.isdir(GFPGAN):
+    raise RuntimeError("❌ Run PY1 first")
 
-MODEL_FILE = os.path.join(
-    GFPGAN_FOLDER,
-    "experiments",
-    "pretrained_models",
-    "GFPGANv1.4.pth"
-)
+# ------------------------------------------------------------
+# FOLDERS
+# ------------------------------------------------------------
 
-# ============================================================
-# CHECK PY1 SETUP
-# ============================================================
+os.makedirs(UPLOAD, exist_ok=True)
+os.makedirs(INPUT, exist_ok=True)
+os.makedirs(RESULT, exist_ok=True)
 
-if not os.path.isdir(GFPGAN_FOLDER):
-    raise RuntimeError("❌ Run PY1 first.")
+# ------------------------------------------------------------
+# HEIC SUPPORT
+# ------------------------------------------------------------
 
-if not os.path.isfile(MODEL_FILE):
-    raise RuntimeError("❌ V1.4 model missing. Run PY1 first.")
+try:
+    from PIL import Image
+    import pillow_heif
+except ImportError:
+    subprocess.run(
+        ["pip", "install", "-q", "pillow-heif"],
+        check=True
+    )
+    from PIL import Image
+    import pillow_heif
 
-if not os.path.exists("/content/drive/MyDrive"):
-    raise RuntimeError("❌ Google Drive is not mounted.")
+pillow_heif.register_heif_opener()
 
-os.chdir(GFPGAN_FOLDER)
+# ------------------------------------------------------------
+# FIND PHOTOS
+# ------------------------------------------------------------
 
-# ============================================================
-# DRIVE — NEVER DELETE
-# ============================================================
+photos = []
 
-os.makedirs(DRIVE_INPUT, exist_ok=True)
-os.makedirs(DRIVE_RESULT, exist_ok=True)
+for ext in [
+    "*.jpg", "*.jpeg", "*.JPG", "*.JPEG",
+    "*.heic", "*.HEIC", "*.heif", "*.HEIF",
+    "*.png", "*.PNG"
+]:
+    photos += glob.glob(f"{UPLOAD}/{ext}")
 
-# ============================================================
-# SERVER — CLEAR ONLY TEMPORARY FILES
-# ============================================================
+if not photos:
+    print("📂 No photos found in upload folder")
+    raise SystemExit
+
+print(f"📷 {len(photos)} photo(s) found")
+
+# ------------------------------------------------------------
+# TEMPORARY COLAB FOLDERS
+# ------------------------------------------------------------
 
 shutil.rmtree(SERVER_INPUT, ignore_errors=True)
 shutil.rmtree(SERVER_OUTPUT, ignore_errors=True)
@@ -62,40 +74,86 @@ shutil.rmtree(SERVER_OUTPUT, ignore_errors=True)
 os.makedirs(SERVER_INPUT, exist_ok=True)
 os.makedirs(SERVER_OUTPUT, exist_ok=True)
 
-# ============================================================
-# UPLOAD
-# ============================================================
+# ------------------------------------------------------------
+# UPLOAD → INPUT
+# ------------------------------------------------------------
 
-print("📤 Select photo")
+jobs = []
 
-uploaded = files.upload()
+for photo in photos:
 
-if not uploaded:
-    raise RuntimeError("❌ No photo selected.")
+    filename = os.path.basename(photo)
+    name, ext = os.path.splitext(filename)
 
-# ============================================================
-# SAVE INPUT
-# ============================================================
+    # HEIC/HEIF becomes JPEG
+    if ext.lower() in [".heic", ".heif"]:
+        filename = name + ".jpg"
 
-for filename in uploaded:
+        image = Image.open(photo)
+        image.convert("RGB").save(
+            f"{INPUT}/{filename}",
+            "JPEG",
+            quality=100
+        )
 
-    source = os.path.join("/content", filename)
-    server_file = os.path.join(SERVER_INPUT, filename)
+    else:
+        # Keep original JPEG/PNG
+        shutil.copy2(
+            photo,
+            f"{INPUT}/{filename}"
+        )
 
-    shutil.move(source, server_file)
+    # --------------------------------------------------------
+    # DUPLICATE NAME
+    # --------------------------------------------------------
 
+    if os.path.exists(f"{RESULT}/{filename}"):
+
+        if name.isdigit():
+
+            used = []
+
+            for folder in [INPUT, RESULT]:
+
+                for f in os.listdir(folder):
+
+                    n, e = os.path.splitext(f)
+
+                    if n.isdigit():
+                        used.append(int(n))
+
+            filename = f"{max(used, default=0) + 1}{os.path.splitext(filename)[1]}"
+
+        else:
+
+            n = 1
+            base, extension = os.path.splitext(filename)
+
+            while (
+                os.path.exists(f"{INPUT}/{filename}") or
+                os.path.exists(f"{RESULT}/{filename}")
+            ):
+                filename = f"{base}_{n}{extension}"
+                n += 1
+
+    # Copy final input to server
     shutil.copy2(
-        server_file,
-        os.path.join(DRIVE_INPUT, filename)
+        f"{INPUT}/{filename}",
+        f"{SERVER_INPUT}/{filename}"
     )
 
-print("✅ Photo saved to Drive")
+    jobs.append(filename)
 
-# ============================================================
+    print(f"📥 {filename}")
+
+# ------------------------------------------------------------
 # RESTORE
-# ============================================================
+# ------------------------------------------------------------
+
+os.chdir(GFPGAN)
 
 print("🔄 Restoring...")
+print("⏳ Please wait...")
 
 command = [
     "python",
@@ -107,71 +165,40 @@ command = [
     "-w", "1.0"
 ]
 
-start_time = time.time()
+process = subprocess.run(command)
 
-process = subprocess.Popen(
-    command,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.STDOUT,
-    text=True,
-    bufsize=1
+if process.returncode != 0:
+    raise RuntimeError("❌ GFPGAN restoration failed")
+
+# ------------------------------------------------------------
+# SAVE RESULTS
+# ------------------------------------------------------------
+
+restored = glob.glob(
+    f"{SERVER_OUTPUT}/restored_imgs/*"
 )
 
-# Live elapsed-time indicator
-while process.poll() is None:
+if not restored:
+    raise RuntimeError("❌ No restored images produced")
 
-    elapsed = int(time.time() - start_time)
+for file in restored:
 
-    print(
-        f"\r⏳ Processing: {elapsed}s",
-        end="",
-        flush=True
-    )
-
-    time.sleep(2)
-
-return_code = process.wait()
-
-print()
-
-# ============================================================
-# FIND RESULT
-# ============================================================
-
-restored_files = glob.glob(
-    os.path.join(
-        SERVER_OUTPUT,
-        "restored_imgs",
-        "*"
-    )
-)
-
-# ============================================================
-# SAVE RESULT
-# ============================================================
-
-if return_code != 0 or not restored_files:
-
-    raise RuntimeError(
-        "❌ Restoration failed. Check the GFPGAN error above."
-    )
-
-for restored_file in restored_files:
-
-    filename = os.path.basename(restored_file)
+    filename = os.path.basename(file)
 
     shutil.copy2(
-        restored_file,
-        os.path.join(DRIVE_RESULT, filename)
+        file,
+        f"{RESULT}/{filename}"
     )
 
-# ============================================================
-# DOWNLOAD
-# ============================================================
+    print(f"✅ {filename}")
 
-print("✅ Restoration completed")
-print("💾 Result saved to Drive")
+# ------------------------------------------------------------
+# DONE
+# ------------------------------------------------------------
 
-files.download(restored_files[0])
-
-print("⬇️ Download started")
+print()
+print("================================")
+print("✅ DONE")
+print("📂 INPUT :", INPUT)
+print("📂 RESULT:", RESULT)
+print("================================")
