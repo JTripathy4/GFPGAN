@@ -1,9 +1,14 @@
-import os, sys, subprocess, pathlib
+import os
+import sys
+import subprocess
+import pathlib
 
 GF = "/content/GFPGAN"
 
-# 1. Keep existing GFPGAN; clone only if missing
-if os.path.isdir(os.path.join(GF, ".git")):
+# =========================
+# GFPGAN
+# =========================
+if os.path.isdir(GF):
     print("✅ GFPGAN already exists")
 else:
     print("⬇️ Cloning GFPGAN...")
@@ -15,58 +20,77 @@ else:
 
 os.chdir(GF)
 
-# 2. BasicSR — check first
+# =========================
+# BASICSR
+# =========================
 try:
     import basicsr
     print("✅ BasicSR already installed:", basicsr.__version__)
 
 except ImportError:
-    print("⬇️ Installing BasicSR...")
+
+    print("⬇️ Installing BasicSR fixed version...")
+
     subprocess.run([
-        sys.executable, "-m", "pip", "install",
-        "basicsr==1.4.2"
+        sys.executable, "-m", "pip", "install", "-q",
+        "basicsr-fixed==1.4.2"
     ], check=True)
 
     import basicsr
     print("✅ BasicSR installed:", basicsr.__version__)
 
-# 3. Other required packages
-for pkg, module in [
-    ("facexlib", "facexlib"),
-    ("realesrgan", "realesrgan")
-]:
+# =========================
+# OTHER DEPENDENCIES
+# =========================
+for package in ["facexlib", "realesrgan"]:
+
     try:
-        __import__(module)
-        print("✅", pkg)
+        __import__(package)
+        print("✅", package, "ready")
+
     except ImportError:
         subprocess.run([
-            sys.executable, "-m", "pip", "install", "-q", pkg
+            sys.executable, "-m", "pip",
+            "install", "-q", package
         ], check=True)
 
-# 4. Fix BasicSR / torchvision compatibility
+# =========================
+# BASICSR / TORCHVISION FIX
+# =========================
 for p in pathlib.Path("/usr/local/lib").rglob("degradations.py"):
-    s = p.read_text()
-    s = s.replace(
+
+    text = p.read_text()
+
+    text = text.replace(
         "torchvision.transforms.functional_tensor",
         "torchvision.transforms.functional"
     )
-    p.write_text(s)
 
-# 5. Google Drive — never delete anything
+    p.write_text(text)
+
+# =========================
+# GOOGLE DRIVE
+# =========================
 from google.colab import drive
 
 DRIVE = "/content/drive"
 
 if os.path.ismount(DRIVE):
+
     print("✅ Google Drive already mounted")
+
 else:
+
     if os.path.exists(DRIVE) and os.listdir(DRIVE):
+
         DRIVE = "/content/gdrive_new"
         os.makedirs(DRIVE, exist_ok=True)
 
     drive.mount(DRIVE)
 
-# 6. FINAL verification
+# =========================
+# FINAL CHECK
+# =========================
 import basicsr
 
 print("================================")
