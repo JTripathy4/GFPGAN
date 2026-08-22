@@ -1,28 +1,22 @@
 import os
 import sys
 import subprocess
-from pathlib import Path
 
 GFPGAN = "/content/GFPGAN"
 
 # ============================================================
-# GFPGAN REPOSITORY
+# GFPGAN
 # ============================================================
 
 if os.path.isdir(GFPGAN):
-
     print("✅ GFPGAN already exists")
-
 else:
-
     print("⬇️ Cloning GFPGAN...")
-
     subprocess.run([
         "git", "clone", "-q",
         "https://github.com/JTripathy4/GFPGAN.git",
         GFPGAN
     ], check=True)
-
     print("✅ GFPGAN cloned")
 
 os.chdir(GFPGAN)
@@ -33,76 +27,58 @@ os.chdir(GFPGAN)
 # ============================================================
 
 try:
-
     import basicsr
-
-    print(
-        "✅ BasicSR already installed:",
-        basicsr.__version__
-    )
+    print("✅ BasicSR already installed:", basicsr.__version__)
 
 except ImportError:
-
     print("⬇️ Installing BasicSR...")
 
     subprocess.run([
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "-q",
+        sys.executable, "-m", "pip", "install", "-q",
         "basicsr-fixed==1.4.2"
     ], check=True)
 
     import basicsr
-
-    print(
-        "✅ BasicSR installed:",
-        basicsr.__version__
-    )
+    print("✅ BasicSR installed:", basicsr.__version__)
 
 
 # ============================================================
-# TORCHVISION / BASICSR COMPATIBILITY FIX
+# FIX BASICSR / TORCHVISION
 # ============================================================
 
 print("🔧 Checking BasicSR compatibility...")
 
-fixed = False
+basicsr_path = os.path.dirname(basicsr.__file__)
 
-for base in [
-    "/usr/local/lib/python3.11/site-packages",
-    "/usr/local/lib/python3.11/dist-packages"
-]:
+degradation_file = os.path.join(
+    basicsr_path,
+    "data",
+    "degradations.py"
+)
 
-    path = Path(base)
+if not os.path.isfile(degradation_file):
+    raise RuntimeError(
+        "❌ BasicSR degradations.py not found"
+    )
 
-    if not path.exists():
-        continue
+with open(degradation_file, "r") as f:
+    text = f.read()
 
-    for file in path.rglob("degradations.py"):
+old = "from torchvision.transforms.functional_tensor import rgb_to_grayscale"
+new = "from torchvision.transforms.functional import rgb_to_grayscale"
 
-        text = file.read_text()
+if old in text:
 
-        old = "torchvision.transforms.functional_tensor"
-        new = "torchvision.transforms.functional"
+    text = text.replace(old, new)
 
-        if old in text:
+    with open(degradation_file, "w") as f:
+        f.write(text)
 
-            file.write_text(
-                text.replace(old, new)
-            )
+    print("✅ BasicSR torchvision fix applied")
 
-            fixed = True
+else:
 
-            print(
-                "✅ BasicSR torchvision compatibility fixed"
-            )
-
-
-if not fixed:
-
-    print("✅ BasicSR compatibility already correct")
+    print("✅ BasicSR torchvision fix already applied")
 
 
 # ============================================================
@@ -110,22 +86,15 @@ if not fixed:
 # ============================================================
 
 try:
-
     import facexlib
-
     print("✅ facexlib already installed")
 
 except ImportError:
-
     print("⬇️ Installing facexlib...")
 
     subprocess.run([
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "-q",
-        "facexlib"
+        sys.executable, "-m", "pip",
+        "install", "-q", "facexlib"
     ], check=True)
 
     print("✅ facexlib installed")
@@ -136,22 +105,15 @@ except ImportError:
 # ============================================================
 
 try:
-
     import realesrgan
-
     print("✅ realesrgan already installed")
 
 except ImportError:
-
     print("⬇️ Installing realesrgan...")
 
     subprocess.run([
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "-q",
-        "realesrgan"
+        sys.executable, "-m", "pip",
+        "install", "-q", "realesrgan"
     ], check=True)
 
     print("✅ realesrgan installed")
@@ -177,10 +139,7 @@ MODEL_URL = (
     "download/v1.3.0/GFPGANv1.4.pth"
 )
 
-os.makedirs(
-    MODEL_DIR,
-    exist_ok=True
-)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
 if os.path.isfile(MODEL):
 
@@ -191,12 +150,9 @@ else:
     print("⬇️ Downloading GFPGAN V1.4 MODEL...")
 
     subprocess.run([
-        "wget",
-        "-q",
-        "--show-progress",
+        "wget", "-q", "--show-progress",
         MODEL_URL,
-        "-O",
-        MODEL
+        "-O", MODEL
     ], check=True)
 
     print("✅ GFPGAN V1.4 MODEL downloaded")
@@ -209,7 +165,7 @@ else:
 print()
 print("========================================")
 print("✅ CELL 1 COMPLETED")
-print("========================================")
+print("================================")
 print("📁 GFPGAN :", GFPGAN)
 print("✅ BasicSR :", basicsr.__version__)
 print("✅ V1.4 MODEL : READY")
